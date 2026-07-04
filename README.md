@@ -1,6 +1,26 @@
-# RAG Mortgage EEUU
+# Mortgage Guidelines RAG
 
-Sistema RAG (Retrieval-Augmented Generation) para la base de conocimiento hipotecaria de EE.UU.
+A retrieval-augmented generation (RAG) pipeline over official United States
+mortgage guidelines. It ingests PDF documents from regulatory bodies and
+government-sponsored enterprises — including the CFPB, FHA, VA, Fannie Mae,
+Freddie Mac, and the Uniform Residential Loan Application (URLA / Form 1003) —
+into a vector search index and serves citation-grounded answers.
+
+## Problem
+
+Mortgage origination in the United States is governed by a dense web of
+regulations, program guidelines, and disclosure requirements. Lenders such as
+Bank of America provide program overviews on their public site
+([https://www.bankofamerica.com/mortgage/home-mortgage/](https://www.bankofamerica.com/mortgage/home-mortgage/)),
+but loan officers, processors, and compliance staff must consult dozens of
+official documents — the CFPB shopping toolkit, FHA handbooks, VA lender
+guides, and URLA instructions — to answer specific questions accurately.
+
+A knowledge gap on any of these documents can slow down processing, lead to
+compliance risk, or result in incomplete borrower guidance. This pipeline
+centralises the reference corpus, chunks it for precise retrieval, and lets
+LLM applications query it with citations back to the original source
+(paragraph, page, document name).
 
 ## Stack
 
@@ -8,36 +28,33 @@ Sistema RAG (Retrieval-Augmented Generation) para la base de conocimiento hipote
 - **Vector store:** Pinecone (serverless, AWS us-east-1, cosine similarity)
 - **Chunking:** `RecursiveCharacterTextSplitter` (LangChain)
 - **PDF parsing:** `pypdf`
+- **Evaluation:** LangSmith, Ragas
+- **Interface:** Gradio (optional)
+- **Packaging:** Poetry
 
-## Requisitos
+## Retrieval flow
 
-- Python 3.11+
-- Poetry
+```
+question → embed_query (Voyage) → Pinecone query (top-10)
+  → rerank (Voyage, top-4) → [{source, page, text, score}]
+```
 
-## Instalación
+## Setup
 
 ```bash
 poetry install
+cp .env.example .env   # set VOYAGE_API_KEY, PINECONE_API_KEY
 ```
 
-## Configuración
+## Usage
 
-Copia `.env.example` a `.env` y completa las API keys:
-
-```
-VOYAGE_API_KEY=...
-PINECONE_API_KEY=...
-```
-
-## Uso
-
-### Ingestar PDFs en la base de conocimiento
+### Ingest PDFs
 
 ```bash
 poetry run python -m rag_mortgage_eeuu.ingest
 ```
 
-### Buscar en la base de conocimiento (prueba rápida)
+### Search (quick test)
 
 ```bash
 poetry run python -c "
@@ -53,22 +70,21 @@ for r in search('What is LTV?'):
 poetry run pytest
 ```
 
-## Arquitectura
+## Architecture
 
 ```
-rag_mortgage_eeuu/
-├── src/rag_mortgage_eeuu/
-│   ├── config.py        # Settings (pydantic-settings)
-│   ├── embeddings.py    # Voyage AI: embeddings + reranking via httpx
-│   ├── vector_store.py  # Pinecone: index, upsert, query, clear
-│   ├── retriever.py     # Orquestación: embed → Pinecone → rerank
-│   └── ingest.py        # Pipeline: PDF → chunk → embed → upsert
-├── pdf/                 # Source PDFs
-└── tests/
+src/rag_mortgage_eeuu/
+  config.py        # settings (pydantic-settings)
+  embeddings.py    # Voyage AI: embeddings + reranking via httpx
+  vector_store.py  # Pinecone: index, upsert, query, clear
+  retriever.py     # orchestration: embed → Pinecone → rerank
+  ingest.py        # pipeline: PDF → chunk → embed → upsert
+  main.py          # Gradio interface
+pdf/               # source PDF documents
+evals/             # evaluation scripts (LangSmith, Ragas)
+tests/
 ```
 
-Flujo de retrieval:
-1. `embed_query(question)` → Voyage
-2. `Pinecone.query(vector, top_k=10)` → 10 candidatos
-3. `rerank(question, docs, top_k=4)` → Voyage, top 4 precisos
-4. Resultados: `[{source, page, text, score}]`
+## License
+
+MIT
